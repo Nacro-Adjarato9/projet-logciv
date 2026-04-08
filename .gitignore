@@ -1,0 +1,50 @@
+# Dependencies
+node_modules/
+.pnpm-lock.yaml
+package-lock.json
+yarn.lock
+
+# Production
+dist/
+build/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+env/
+.env
+
+# Django
+*.sqlite3
+/staticfiles/
+/media/
+
+# Misc
+.cache/
+.venv
+.egg-info/

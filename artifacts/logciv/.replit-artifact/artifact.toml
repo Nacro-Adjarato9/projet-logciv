@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "LogCiv - Plateforme Immobilière"
+version = "1.0.0"
+id = "artifacts/logciv"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 25635
+
+[services.development]
+run = "pnpm --filter @workspace/logciv run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/logciv", "run", "build" ]
+publicDir = "artifacts/logciv/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "25635"
+BASE_PATH = "/"
