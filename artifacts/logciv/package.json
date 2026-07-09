@@ -74,5 +74,9 @@
     "wouter": "^3.3.5",
     "zod": "^3.23.0",
     "zustand": "^5.0.12"
+  },
+  "dependencies": {
+    "@react-google-maps/api": "^2.20.8",
+    "axios": "^1.15.1"
   }
 }

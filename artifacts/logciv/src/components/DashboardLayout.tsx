@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/context/AuthContext";
-import { useStore } from "@/lib/store";
+import { api } from "@/services/api";
 import {
   LayoutDashboard, Building2, PlusCircle, CalendarCheck, Calendar,
-  MessageSquare, Heart, Bell, User, Settings, HelpCircle, LogOut,
+  MessageSquare, Bell, User, Settings, HelpCircle, LogOut,
   Menu, X, ChevronRight, Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -12,7 +13,7 @@ import { Badge } from "@/components/ui/badge";
 
 export type DashboardTab =
   | "overview" | "biens" | "ajouter-bien" | "reservations"
-  | "calendrier" | "messages" | "favoris" | "notifications"
+  | "calendrier" | "messages" | "notifications"
   | "profil" | "parametres" | "support" | "agents";
 
 interface NavItem {
@@ -29,7 +30,6 @@ const navItems: NavItem[] = [
   { path: "reservations", label: "Mes réservations", icon: CalendarCheck },
   { path: "calendrier", label: "Calendrier des visites", icon: Calendar },
   { path: "messages", label: "Messages", icon: MessageSquare },
-  { path: "favoris", label: "Favoris", icon: Heart },
   { path: "notifications", label: "Notifications", icon: Bell },
   { path: "agents", label: "Agents", icon: Users, agenceOnly: true },
   { path: "profil", label: "Profil", icon: User },
@@ -37,9 +37,15 @@ const navItems: NavItem[] = [
   { path: "support", label: "Aide / Support", icon: HelpCircle },
 ];
 
-const roleLabels: Record<string, string> = { proprietaire: "Propriétaire", agent: "Agent", agence: "Agence" };
+const roleLabels: Record<string, string> = {
+  proprietaire: "Propriétaire",
+  locataire: "Locataire",
+  agent: "Agent",
+  agence: "Agence",
+};
 const roleColors: Record<string, string> = {
   proprietaire: "bg-primary/10 text-primary border-primary/20",
+  locataire: "bg-slate-100 text-slate-700 border-slate-200",
   agent: "bg-accent/10 text-accent border-accent/20",
   agence: "bg-purple-100 text-purple-700 border-purple-200",
 };
@@ -61,11 +67,20 @@ interface DashboardLayoutProps {
 
 export default function DashboardLayout({ children, activeTab, onTabChange }: DashboardLayoutProps) {
   const { currentUser, logout } = useAuth();
-  const { notifications } = useStore();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [, setLocation] = useLocation();
 
-  const unreadNotifs = notifications.filter((n) => !n.read && n.userId === currentUser?.id).length;
+  const notificationsQuery = useQuery({
+    queryKey: ["notifications", currentUser?.id],
+    queryFn: () => api.notifications.list(),
+    enabled: !!currentUser,
+    staleTime: 30_000,
+  });
+
+  const notificationItems = Array.isArray(notificationsQuery.data)
+    ? notificationsQuery.data
+    : notificationsQuery.data?.results ?? [];
+  const unreadNotifs = notificationItems.filter((n: any) => !n.read).length;
   const verStatus = currentUser?.verificationStatus ?? "non_verifie";
 
   const handleLogout = () => { logout(); setLocation("/"); };

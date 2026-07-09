@@ -1,4 +1,4 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { useLocation } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -7,18 +7,39 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Building2, User, Briefcase, CheckCircle, ChevronRight, ChevronLeft, Upload, X, FileText, Image as ImageIcon } from "lucide-react";
+import { Building2, User, CheckCircle, ChevronRight, ChevronLeft, Upload, X, FileText, Image as ImageIcon } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
-import { useStore, generateId } from "@/lib/store";
 import type { UserRole, UploadedDoc } from "@/lib/store";
+import { authAPI, extractAuthTokens, setTokens, usersAPI } from "@/services/api";
+
+function dataUrlToFile(dataUrl: string, filename: string, mimeType: string): File {
+  const [, base64] = dataUrl.split(",");
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new File([bytes], filename, { type: mimeType });
+}
+
+const CI_PHONE_REGEX = /^(\+225)?0[0-9]{9}$/;
 
 const step1Schema = z.object({
   nom: z.string().min(2, "Le nom doit contenir au moins 2 caractères"),
   prenom: z.string().min(2, "Le prénom doit contenir au moins 2 caractères"),
   email: z.string().email("Email invalide"),
-  telephone: z.string().min(8, "Numéro de téléphone invalide"),
-  motdepasse: z.string().min(8, "Le mot de passe doit contenir au moins 8 caractères"),
+  telephone: z
+    .string()
+    .transform((v) => v.replace(/[\s.-]/g, ""))
+    .refine(
+      (v) => CI_PHONE_REGEX.test(v),
+      "Numéro invalide. Format attendu : 0700000000 ou +2250700000000"
+    ),
+  motdepasse: z
+    .string()
+    .min(8, "Le mot de passe doit contenir au moins 8 caractères")
+    .regex(/[A-Z]/, "Le mot de passe doit contenir au moins une majuscule")
+    .regex(/[0-9]/, "Le mot de passe doit contenir au moins un chiffre")
+    .regex(/[^A-Za-z0-9]/, "Le mot de passe doit contenir au moins un caractère spécial"),
   confirmation: z.string().min(8, "La confirmation est requise"),
 }).refine((d) => d.motdepasse === d.confirmation, {
   message: "Les mots de passe ne correspondent pas",
@@ -45,37 +66,32 @@ type Step1Data = z.infer<typeof step1Schema>;
 
 const roles: { value: UserRole; label: string; desc: string; icon: typeof User }[] = [
   { value: "proprietaire", label: "Propriétaire", desc: "Je possède des biens immobiliers à gérer", icon: User },
-  { value: "agent", label: "Agent immobilier", desc: "Je suis un agent professionnel", icon: Briefcase },
   { value: "agence", label: "Agence immobilière", desc: "Je gère une agence avec des agents", icon: Building2 },
 ];
 
 const proprietaireDocuments = [
   { key: "cni_recto", label: "CNI / Passeport (recto)", required: true },
   { key: "cni_verso", label: "CNI / Passeport (verso)", required: true },
-  { key: "justif_propriete", label: "Justificatif de propriété / Contrat", required: false },
-  { key: "selfie_cni", label: "Selfie avec pièce d'identité", required: false },
-  { key: "facture_cie", label: "Facture CIE / SODECI (optionnel)", required: false },
 ];
 
 const agentDocuments = [
   { key: "rccm_doc", label: "Registre de commerce (RCCM)", required: true },
   { key: "ncc_doc", label: "Numéro Contribuable (NCC)", required: true },
   { key: "cni_responsable", label: "Pièce d'identité du responsable", required: true },
-  { key: "autorisation", label: "Autorisation d'exercer", required: true },
   { key: "logo_agence", label: "Logo de l'agence (optionnel)", required: false },
 ];
 
 export default function Inscription() {
+  const [, setLocation] = useLocation();
   const [step, setStep] = useState(1);
   const [step1Data, setStep1Data] = useState<Step1Data | null>(null);
+  const [step3ProprietaireData, setStep3ProprietaireData] = useState<z.infer<typeof step3ProprietaireSchema> | null>(null);
+  const [step3AgentData, setStep3AgentData] = useState<z.infer<typeof step3AgentSchema> | null>(null);
   const [selectedRole, setSelectedRole] = useState<UserRole | null>(null);
-  const [step3ProData, setStep3ProData] = useState<z.infer<typeof step3ProprietaireSchema> | null>(null);
-  const [step3AgData, setStep3AgData] = useState<z.infer<typeof step3AgentSchema> | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [documents, setDocuments] = useState<Record<string, UploadedDoc>>({});
-  const [success, setSuccess] = useState(false);
-  const [, setLocation] = useLocation();
-  const register = useStore((s) => s.register);
+  const [submitError, setSubmitError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   const { register: reg1, handleSubmit: handleStep1, formState: { errors: e1 } } = useForm<Step1Data>({ resolver: zodResolver(step1Schema) });
   const { register: reg3p, handleSubmit: handleStep3p, formState: { errors: e3p } } = useForm<z.infer<typeof step3ProprietaireSchema>>({
@@ -86,8 +102,14 @@ export default function Inscription() {
   });
 
   const onStep1 = (data: Step1Data) => { setStep1Data(data); setStep(2); };
-  const onStep3Proprietaire = (data: z.infer<typeof step3ProprietaireSchema>) => { setStep3ProData(data); setStep(4); };
-  const onStep3Agent = (data: z.infer<typeof step3AgentSchema>) => { setStep3AgData(data); setStep(4); };
+  const onStep3Proprietaire = (data: z.infer<typeof step3ProprietaireSchema>) => {
+    setStep3ProprietaireData(data);
+    setStep(4);
+  };
+  const onStep3Agent = (data: z.infer<typeof step3AgentSchema>) => {
+    setStep3AgentData(data);
+    setStep(4);
+  };
 
   const handleDocUpload = (key: string, file: File) => {
     const reader = new FileReader();
@@ -104,61 +126,87 @@ export default function Inscription() {
     setDocuments((prev) => { const next = { ...prev }; delete next[key]; return next; });
   };
 
-  const handleFinalSubmit = () => {
-    if (!step1Data || !selectedRole) return;
-    const baseData = {
-      nom: step1Data.nom,
-      prenom: step1Data.prenom,
-      email: step1Data.email,
-      telephone: step1Data.telephone,
-      role: selectedRole,
-      verificationStatus: "en_attente" as const,
-      documents,
-    };
-    if (selectedRole === "proprietaire" && step3ProData) {
-      register({ ...baseData, type: step3ProData.type, adresse: step3ProData.adresse, ville: step3ProData.ville });
-    } else if ((selectedRole === "agent" || selectedRole === "agence") && step3AgData) {
-      register({
-        ...baseData,
-        nomAgence: step3AgData.nomAgence,
-        rccm: step3AgData.rccm,
-        ncc: step3AgData.ncc,
-        adresse: step3AgData.adresse,
-        ville: step3AgData.ville,
-        description: step3AgData.description,
-        siteWeb: step3AgData.siteWeb,
-        logo: logoPreview || undefined,
-      });
+  const handleFinalSubmit = async () => {
+    if (!step1Data || !selectedRole || submitting) return;
+    setSubmitError("");
+
+    if (selectedRole === "proprietaire" && !step3ProprietaireData) {
+      setSubmitError("Complète les informations du propriétaire avant de valider.");
+      return;
     }
-    setSuccess(true);
-    setTimeout(() => setLocation("/connexion"), 3000);
+
+    if (selectedRole === "agence" && !step3AgentData) {
+      setSubmitError("Complète les informations de l'agence avant de valider.");
+      return;
+    }
+
+    setSubmitting(true);
+
+    try {
+      const response = await authAPI.register({
+        email: step1Data.email,
+        password: step1Data.motdepasse,
+        password2: step1Data.confirmation,
+        first_name: step1Data.prenom,
+        last_name: step1Data.nom,
+        phone: step1Data.telephone,
+        user_type: selectedRole,
+      });
+
+      const tokens = extractAuthTokens(response);
+      if (tokens.access || tokens.refresh) {
+        setTokens(tokens);
+      }
+
+      if (selectedRole === "proprietaire" && step3ProprietaireData) {
+        await usersAPI.updateProfilProprietaire({
+          type_proprietaire: step3ProprietaireData.type,
+          adresse: step3ProprietaireData.adresse,
+          ville: step3ProprietaireData.ville,
+        });
+
+        const docsForm = new FormData();
+        Object.entries(documents).forEach(([key, doc]) => {
+          docsForm.append(key, dataUrlToFile(doc.dataUrl, doc.name, doc.type));
+        });
+        if (docsForm.has("cni_recto") || docsForm.has("cni_verso")) {
+          await usersAPI.verifierProfilProprietaire(docsForm);
+        }
+      } else if (selectedRole === "agence" && step3AgentData) {
+        await usersAPI.updateProfilAgence({
+          nom_agence: step3AgentData.nomAgence,
+          numero_registre_commerce: step3AgentData.rccm,
+          numero_contribuable: step3AgentData.ncc,
+          adresse: step3AgentData.adresse,
+          ville: step3AgentData.ville,
+          description: step3AgentData.description ?? "",
+          site_web: step3AgentData.siteWeb ?? "",
+        });
+
+        const docsForm = new FormData();
+        Object.entries(documents).forEach(([key, doc]) => {
+          docsForm.append(key, dataUrlToFile(doc.dataUrl, doc.name, doc.type));
+        });
+        if (logoPreview) {
+          docsForm.append("logo_agence", dataUrlToFile(logoPreview, "logo.png", "image/png"));
+        }
+        if ([...docsForm.keys()].length > 0) {
+          await usersAPI.verifierProfilAgence(docsForm);
+        }
+      }
+    } catch (err: any) {
+      setSubmitError(err?.message || "Inscription impossible. Vérifie l'API.");
+      setSubmitting(false);
+      return;
+    }
+
+    setSubmitting(false);
+    setLocation(`/verify-email?email=${encodeURIComponent(step1Data.email)}`);
   };
 
   const docList = selectedRole === "proprietaire" ? proprietaireDocuments : agentDocuments;
 
   const steps = ["Informations", "Rôle", "Profil", "Documents"];
-
-  if (success) {
-    return (
-      <div className="min-h-screen flex flex-col">
-        <Navbar />
-        <div className="flex-1 flex items-center justify-center p-8">
-          <div className="text-center max-w-md">
-            <div className="w-20 h-20 bg-accent/10 rounded-full flex items-center justify-center mx-auto mb-6">
-              <CheckCircle className="w-10 h-10 text-accent" />
-            </div>
-            <h2 className="text-2xl font-bold text-foreground mb-3">Inscription réussie !</h2>
-            <p className="text-muted-foreground mb-4">Votre dossier a été soumis pour vérification.</p>
-            <div className="bg-primary/5 border border-primary/20 rounded-xl p-4 text-sm text-foreground/80">
-              Votre compte est <strong>en cours de vérification</strong>. Vous serez validé sous peu et pourrez ensuite publier vos biens.
-            </div>
-            <p className="text-xs text-muted-foreground mt-4">Redirection vers la connexion...</p>
-          </div>
-        </div>
-        <Footer />
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -188,6 +236,11 @@ export default function Inscription() {
           </div>
 
           <div className="bg-card border border-border rounded-2xl p-7 shadow-sm">
+            {submitError && (
+              <div className="mb-4 rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+                {submitError}
+              </div>
+            )}
             {/* Step 1 */}
             {step === 1 && (
               <form onSubmit={handleStep1(onStep1)} className="space-y-4">
@@ -300,12 +353,12 @@ export default function Inscription() {
               </form>
             )}
 
-            {/* Step 3 — Agent/Agence */}
-            {step === 3 && (selectedRole === "agent" || selectedRole === "agence") && (
+            {/* Step 3 — Agence */}
+            {step === 3 && selectedRole === "agence" && (
               <form onSubmit={handleStep3a(onStep3Agent)} className="space-y-4">
                 <div className="flex items-center gap-2 mb-1">
-                  <h2 className="text-lg font-semibold text-foreground">Informations {selectedRole === "agence" ? "de l'agence" : "professionnelles"}</h2>
-                  <Badge className="bg-primary/10 text-primary border-primary/20">{selectedRole === "agence" ? "Agence" : "Agent"}</Badge>
+                  <h2 className="text-lg font-semibold text-foreground">Informations de l'agence</h2>
+                  <Badge className="bg-primary/10 text-primary border-primary/20">Agence</Badge>
                 </div>
                 <div>
                   <Label className="text-sm font-medium">Nom de l'agence *</Label>
@@ -380,7 +433,7 @@ export default function Inscription() {
                 <div className="mb-5">
                   <h2 className="text-lg font-semibold text-foreground mb-1">Vérification & Documents</h2>
                   <p className="text-sm text-muted-foreground">
-                    Ces documents permettent de sécuriser la plateforme et de garantir la fiabilité des annonces.
+                    Ces documents sont analysés automatiquement par notre système de vérification IA afin de sécuriser la plateforme.
                   </p>
                 </div>
 
@@ -388,9 +441,9 @@ export default function Inscription() {
                   <p className="font-medium text-foreground mb-1">Statut après inscription :</p>
                   <div className="flex items-center gap-2">
                     <span className="inline-flex items-center gap-1.5 bg-yellow-100 text-yellow-700 border border-yellow-200 rounded-full px-3 py-0.5 text-xs font-medium">
-                      En attente de validation
+                      Analyse IA en cours
                     </span>
-                    <span className="text-muted-foreground">— Vous serez notifié une fois validé</span>
+                    <span className="text-muted-foreground">— vous serez notifié dès que vos documents sont validés</span>
                   </div>
                 </div>
 
@@ -458,8 +511,8 @@ export default function Inscription() {
                   <Button type="button" variant="outline" className="flex-1 gap-2" onClick={() => setStep(3)}>
                     <ChevronLeft className="w-4 h-4" /> Retour
                   </Button>
-                  <Button type="button" className="flex-1 bg-primary text-white font-semibold" onClick={handleFinalSubmit} data-testid="button-final-submit">
-                    Valider l'inscription
+                  <Button type="button" className="flex-1 bg-primary text-white font-semibold" onClick={handleFinalSubmit} disabled={submitting} data-testid="button-final-submit">
+                    {submitting ? "Envoi en cours..." : "Valider l'inscription"}
                   </Button>
                 </div>
               </div>
@@ -476,3 +529,5 @@ export default function Inscription() {
     </div>
   );
 }
+
+

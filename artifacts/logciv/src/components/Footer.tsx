@@ -1,4 +1,4 @@
-import { Link } from "wouter";
+﻿import { Link } from "wouter";
 import { Building2, MapPin, Phone, Mail, Facebook, Twitter, Instagram } from "lucide-react";
 
 export default function Footer() {
@@ -82,3 +82,4 @@ export default function Footer() {
     </footer>
   );
 }
+

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+﻿import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/context/AuthContext";
 import { Menu, X, Building2, LogOut, LayoutDashboard } from "lucide-react";
@@ -135,3 +135,4 @@ export default function Navbar() {
     </nav>
   );
 }
+

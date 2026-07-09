@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useAuth } from "@/context/AuthContext";
-import { useStore } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -8,7 +7,6 @@ import { Settings, Lock, Bell, Eye, EyeOff, CheckCircle } from "lucide-react";
 
 export default function ParametresTab() {
   const { currentUser } = useAuth();
-  const { updateUser } = useStore();
   const [showOld, setShowOld] = useState(false);
   const [showNew, setShowNew] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
@@ -50,21 +48,24 @@ export default function ParametresTab() {
         </h3>
         <form onSubmit={handlePasswordChange} className="space-y-4">
           <PasswordField label="Mot de passe actuel" value={passwords.old}
-            onChange={(v) => setPasswords((p) => ({ ...p, old: v }))}
-            show={showOld} onToggle={() => setShowOld(!showOld)} />
+            onChange={() => {}}
+            show={showOld} onToggle={() => setShowOld(!showOld)} readOnly />
           <PasswordField label="Nouveau mot de passe" value={passwords.new}
             onChange={(v) => setPasswords((p) => ({ ...p, new: v }))}
-            show={showNew} onToggle={() => setShowNew(!showNew)} />
+            show={showNew} onToggle={() => setShowNew(!showNew)} disabled />
           <PasswordField label="Confirmer le nouveau mot de passe" value={passwords.confirm}
             onChange={(v) => setPasswords((p) => ({ ...p, confirm: v }))}
-            show={showConfirm} onToggle={() => setShowConfirm(!showConfirm)} />
+            show={showConfirm} onToggle={() => setShowConfirm(!showConfirm)} disabled />
           {pwError && <p className="text-xs text-destructive">{pwError}</p>}
           {pwSuccess && (
             <div className="flex items-center gap-2 text-sm text-accent">
               <CheckCircle className="w-4 h-4" /> Mot de passe modifié avec succès !
             </div>
           )}
-          <Button type="submit" className="bg-primary text-white gap-2" data-testid="button-save-password">
+          <p className="text-xs text-muted-foreground">
+            Fonctionnalité bientôt disponible. En attendant, utilise "Mot de passe oublié" sur la page de connexion.
+          </p>
+          <Button type="submit" className="bg-primary text-white gap-2" disabled data-testid="button-save-password">
             <Lock className="w-4 h-4" /> Modifier le mot de passe
           </Button>
         </form>
@@ -127,15 +128,17 @@ export default function ParametresTab() {
   );
 }
 
-function PasswordField({ label, value, onChange, show, onToggle }: {
+function PasswordField({ label, value, onChange, show, onToggle, readOnly, disabled }: {
   label: string; value: string; onChange: (v: string) => void; show: boolean; onToggle: () => void;
+  readOnly?: boolean; disabled?: boolean;
 }) {
   return (
     <div>
       <Label className="text-sm font-medium">{label}</Label>
       <div className="relative mt-1.5">
         <Input type={show ? "text" : "password"} value={value} onChange={(e) => onChange(e.target.value)}
-          placeholder="••••••••" className="pr-10" />
+          readOnly={readOnly} disabled={disabled}
+          placeholder="••••••••" className="pr-10 disabled:opacity-60 disabled:cursor-not-allowed" />
         <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground" onClick={onToggle}>
           {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
         </button>

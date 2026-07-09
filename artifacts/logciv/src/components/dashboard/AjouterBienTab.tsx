@@ -1,18 +1,35 @@
 import { useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useStore } from "@/lib/store";
 import { useAuth } from "@/context/AuthContext";
+import { api } from "@/services/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CheckCircle, Upload, X, Image as ImageIcon, MapPin, Building2, Wrench } from "lucide-react";
 import LimitExceededDialog from "@/components/LimitExceededDialog";
-import { PRICING_PLANS } from "@/types/pricing";
+import LocationPicker from "@/components/LocationPicker";
 
 const EQUIPEMENTS = [
   "Climatisation", "Wifi", "Cuisine équipée", "Groupe électrogène",
   "Piscine", "Gardiennage", "Sécurité 24h/24", "Ascenseur", "Balcon",
   "Terrasse", "Parking gardé", "Interphone",
 ];
+
+const EQUIPEMENT_SLUGS: Record<string, string> = {
+  "Climatisation": "climatisation",
+  "Wifi": "wifi",
+  "Cuisine équipée": "cuisine_equipee",
+  "Groupe électrogène": "groupe_electrogene",
+  "Piscine": "piscine",
+  "Gardiennage": "gardiennage",
+  "Sécurité 24h/24": "securite_24h",
+  "Ascenseur": "ascenseur",
+  "Balcon": "balcon",
+  "Terrasse": "terrasse",
+  "Parking gardé": "parking_garde",
+  "Interphone": "interphone",
+};
 
 const COMMUNES = ["Cocody", "Yopougon", "Marcory", "Bingerville", "Plateau", "Adjame", "Treichville", "Koumassi", "Angré", "Riviera"];
 const QUARTIERS: Record<string, string[]> = {
@@ -26,21 +43,28 @@ const QUARTIERS: Record<string, string[]> = {
 interface FormData {
   titre: string; type: string; categorie: string; prix: string;
   negociable: boolean; pays: string; ville: string; commune: string;
-  quartier: string; adressePrecise: string; pieces: string; chambres: string;
+  quartier: string; adressePrecise: string; latitude: number | null; longitude: number | null;
+  pieces: string; chambres: string;
   sallesDeBain: string; superficie: string; etage: string; parking: boolean;
   meuble: boolean; equipements: string[]; description: string; statut: string;
+  caution: string; chargesComprises: boolean; dateDisponibilite: string;
+  anneeConstruction: string;
+  niveaux: string; escalierInterieur: boolean;
 }
 
 const init: FormData = {
   titre: "", type: "Appartement", categorie: "Location", prix: "", negociable: false,
   pays: "Côte d'Ivoire", ville: "Abidjan", commune: "Cocody", quartier: "Angré",
-  adressePrecise: "", pieces: "", chambres: "", sallesDeBain: "", superficie: "",
+  adressePrecise: "", latitude: null, longitude: null, pieces: "", chambres: "", sallesDeBain: "", superficie: "",
   etage: "", parking: false, meuble: false, equipements: [], description: "", statut: "disponible",
+  caution: "", chargesComprises: false, dateDisponibilite: "", anneeConstruction: "",
+  niveaux: "2", escalierInterieur: true,
 };
 
 export default function AjouterBienTab({ onSuccess }: { onSuccess: () => void }) {
   const { currentUser } = useAuth();
-  const { addProperty, getUserSubscription, getUserPropertiesCount } = useStore();
+  const { getUserSubscription, getUserPropertiesCount } = useStore();
+  const queryClient = useQueryClient();
   const [form, setForm] = useState<FormData>(init);
   const [images, setImages] = useState<string[]>([]);
   const [submitted, setSubmitted] = useState(false);
@@ -50,6 +74,13 @@ export default function AjouterBienTab({ onSuccess }: { onSuccess: () => void })
   const subscription = currentUser ? getUserSubscription(currentUser.id) : null;
   const propertiesCount = currentUser ? getUserPropertiesCount(currentUser.id) : 0;
   const canAdd = subscription ? propertiesCount < subscription.maxProperties : false;
+  const createMutation = useMutation({
+    mutationFn: (payload: any) => api.biens.create(payload),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["dashboard", "biens", "mes"] });
+      await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+    },
+  });
 
   const set = (key: keyof FormData, val: unknown) => setForm((prev) => ({ ...prev, [key]: val }));
 
@@ -80,7 +111,7 @@ export default function AjouterBienTab({ onSuccess }: { onSuccess: () => void })
     return Object.keys(errs).length === 0;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     // Check limit first
@@ -90,30 +121,86 @@ export default function AjouterBienTab({ onSuccess }: { onSuccess: () => void })
     }
     
     if (!validate() || !currentUser) return;
-    addProperty({
-      ownerId: currentUser.id,
+    const mapType = (type: string) => {
+      const normalized = type.toLowerCase();
+      if (normalized.includes("duplex")) return "duplex";
+      if (normalized.includes("appartement")) return "appartement";
+      if (normalized.includes("villa")) return "villa";
+      if (normalized.includes("maison")) return "maison";
+      if (normalized.includes("bureau")) return "bureau";
+      if (normalized.includes("terrain")) return "terrain";
+      if (normalized.includes("studio")) return "studio";
+      return "appartement";
+    };
+
+    const localisation = [form.commune, form.quartier, form.adressePrecise]
+      .filter(Boolean)
+      .join(" - ");
+
+    // Le backend attend un champ booléen distinct par équipement (climatisation,
+    // wifi, piscine, ...), pas un tableau — on les dérive de form.equipements ici.
+    const equipementBooleans = Object.fromEntries(
+      Object.values(EQUIPEMENT_SLUGS).map((slug) => [
+        slug,
+        form.equipements.some((eq) => EQUIPEMENT_SLUGS[eq] === slug),
+      ])
+    );
+
+    const payload = {
+      ...equipementBooleans,
       titre: form.titre,
-      type: form.type as "Appartement" | "Villa" | "Bureau" | "Terrain" | "Studio" | "Maison",
-      categorie: form.categorie as "Location" | "Vente",
+      type: mapType(form.type),
       prix: Number(form.prix),
-      negociable: form.negociable,
-      pays: form.pays,
+      prix_negociable: form.negociable,
       ville: form.ville,
       commune: form.commune,
       quartier: form.quartier,
-      adressePrecise: form.adressePrecise,
-      pieces: form.pieces ? Number(form.pieces) : undefined,
-      chambres: form.chambres ? Number(form.chambres) : undefined,
-      sallesDeBain: form.sallesDeBain ? Number(form.sallesDeBain) : undefined,
+      adresse_precise: form.adressePrecise,
+      localisation,
+      latitude: form.latitude ?? undefined,
+      longitude: form.longitude ?? undefined,
+      description: form.description,
+      statut: form.statut as "disponible" | "reserve" | "loue" | "vendu",
+      nombre_chambres: form.chambres ? Number(form.chambres) : 0,
+      nombre_salons: form.pieces ? Number(form.pieces) : 0,
+      nombre_salles_bain: form.sallesDeBain ? Number(form.sallesDeBain) : 0,
       superficie: form.superficie ? Number(form.superficie) : undefined,
       etage: form.etage ? Number(form.etage) : undefined,
       parking: form.parking,
       meuble: form.meuble,
-      equipements: form.equipements,
-      description: form.description,
-      images: images.length > 0 ? images : ["https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=600"],
-      statut: form.statut as "disponible" | "reserve" | "indisponible",
-    });
+      caution_mois: form.caution ? Number(form.caution) : undefined,
+      charges_comprises: form.chargesComprises,
+      disponible_a_partir: form.dateDisponibilite || undefined,
+      annee_construction: form.anneeConstruction ? Number(form.anneeConstruction) : undefined,
+      ...(form.type === "Duplex" && {
+        nombre_niveaux: Number(form.niveaux),
+        escalier_interieur: form.escalierInterieur,
+      }),
+    };
+
+    let createdBien: any;
+    try {
+      createdBien = await createMutation.mutateAsync(payload);
+    } catch (err: any) {
+      setErrors({
+        submit:
+          err?.message ||
+          "Impossible de publier le bien via l'API.",
+      });
+      return;
+    }
+
+    if (images.length > 0 && createdBien?.id) {
+      try {
+        await api.images.uploadMultiple({ bien_id: createdBien.id, images_base64: images });
+      } catch (err: any) {
+        setErrors({
+          submit:
+            `Le bien a été publié, mais l'envoi des photos a échoué : ${err?.message || "erreur inconnue"}`,
+        });
+        return;
+      }
+    }
     setSubmitted(true);
     setTimeout(() => { setSubmitted(false); setForm(init); setImages([]); onSuccess(); }, 2000);
   };
@@ -159,6 +246,11 @@ export default function AjouterBienTab({ onSuccess }: { onSuccess: () => void })
       )}
 
       <form onSubmit={handleSubmit} className="space-y-5">
+        {errors.submit && (
+          <div className="p-3 rounded-md bg-destructive/10 text-destructive text-sm">
+            {errors.submit}
+          </div>
+        )}
         {/* Section 1 — Infos générales */}
         <Section icon={Building2} title="Informations générales">
           <div>
@@ -172,7 +264,7 @@ export default function AjouterBienTab({ onSuccess }: { onSuccess: () => void })
               <Label className="text-sm font-medium">Type de bien</Label>
               <select value={form.type} onChange={(e) => set("type", e.target.value)}
                 className="mt-1.5 w-full border border-border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-ring">
-                {["Appartement", "Villa", "Maison", "Bureau", "Terrain", "Studio"].map((t) => (
+                {["Appartement", "Duplex", "Villa", "Maison", "Bureau", "Terrain", "Studio"].map((t) => (
                   <option key={t}>{t}</option>
                 ))}
               </select>
@@ -238,6 +330,16 @@ export default function AjouterBienTab({ onSuccess }: { onSuccess: () => void })
             <Input placeholder="Résidence Les Palmiers, Bâtiment A" value={form.adressePrecise}
               onChange={(e) => set("adressePrecise", e.target.value)} className="mt-1.5" />
           </div>
+          <div>
+            <Label className="text-sm font-medium">Position sur la carte</Label>
+            <div className="mt-1.5">
+              <LocationPicker
+                latitude={form.latitude}
+                longitude={form.longitude}
+                onChange={({ lat, lng }) => { set("latitude", lat); set("longitude", lng); }}
+              />
+            </div>
+          </div>
         </Section>
 
         {/* Section 3 — Caractéristiques */}
@@ -248,11 +350,35 @@ export default function AjouterBienTab({ onSuccess }: { onSuccess: () => void })
             <NumInput label="Salles de bain" value={form.sallesDeBain} onChange={(v) => set("sallesDeBain", v)} placeholder="2" />
             <NumInput label="Superficie (m²)" value={form.superficie} onChange={(v) => set("superficie", v)} placeholder="85" />
             <NumInput label="Étage" value={form.etage} onChange={(v) => set("etage", v)} placeholder="0" />
+            {form.type === "Duplex" && (
+              <NumInput label="Nombre de niveaux" value={form.niveaux} onChange={(v) => set("niveaux", v)} placeholder="2" />
+            )}
           </div>
           <div className="flex gap-6 pt-1">
             <CheckItem label="Parking" checked={form.parking} onChange={(v) => set("parking", v)} />
             <CheckItem label="Meublé" checked={form.meuble} onChange={(v) => set("meuble", v)} />
+            {form.type === "Duplex" && (
+              <CheckItem label="Escalier intérieur" checked={form.escalierInterieur} onChange={(v) => set("escalierInterieur", v)} />
+            )}
           </div>
+        </Section>
+
+        {/* Section 3b — Conditions */}
+        <Section icon={Building2} title="Conditions">
+          <div className="grid grid-cols-2 gap-4">
+            <NumInput label="Caution / Avance (mois)" value={form.caution} onChange={(v) => set("caution", v)} placeholder="2" />
+            <div>
+              <Label className="text-sm font-medium">Année de construction</Label>
+              <Input type="number" min="1900" max={new Date().getFullYear()} placeholder="2018" value={form.anneeConstruction}
+                onChange={(e) => set("anneeConstruction", e.target.value)} className="mt-1.5" />
+            </div>
+          </div>
+          <div>
+            <Label className="text-sm font-medium">Disponible à partir du</Label>
+            <Input type="date" value={form.dateDisponibilite}
+              onChange={(e) => set("dateDisponibilite", e.target.value)} className="mt-1.5" />
+          </div>
+          <CheckItem label="Charges comprises dans le prix" checked={form.chargesComprises} onChange={(v) => set("chargesComprises", v)} />
         </Section>
 
         {/* Section 4 — Équipements */}
@@ -317,7 +443,8 @@ export default function AjouterBienTab({ onSuccess }: { onSuccess: () => void })
             {[
               { value: "disponible", label: "Disponible", cls: "border-green-200 bg-green-50 text-green-700" },
               { value: "reserve", label: "Réservé", cls: "border-yellow-200 bg-yellow-50 text-yellow-700" },
-              { value: "indisponible", label: "Indisponible", cls: "border-gray-200 bg-gray-50 text-gray-600" },
+              { value: "loue", label: "Loué", cls: "border-gray-200 bg-gray-50 text-gray-600" },
+              { value: "vendu", label: "Vendu", cls: "border-gray-200 bg-gray-50 text-gray-600" },
             ].map((s) => (
               <label key={s.value} className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border-2 cursor-pointer transition-all ${form.statut === s.value ? s.cls + " border-2" : "border-border hover:border-primary/40"}`}>
                 <input type="radio" name="statut" value={s.value} checked={form.statut === s.value}

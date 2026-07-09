@@ -42,7 +42,7 @@ export interface Property {
   id: string;
   ownerId: string;
   titre: string;
-  type: 'Appartement' | 'Villa' | 'Bureau' | 'Terrain' | 'Studio' | 'Maison';
+  type: 'Appartement' | 'Duplex' | 'Villa' | 'Bureau' | 'Terrain' | 'Studio' | 'Maison';
   categorie: 'Location' | 'Vente';
   prix: number;
   negociable: boolean;

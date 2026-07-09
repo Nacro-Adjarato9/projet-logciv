@@ -1,37 +1,84 @@
-import { useState } from "react";
-import { useStore } from "@/lib/store";
+import { useEffect, useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/context/AuthContext";
+import { api } from "@/services/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { MessageSquare, Send, User } from "lucide-react";
 
+function unwrapList(data: any) {
+  if (Array.isArray(data)) return data;
+  return data?.results ?? [];
+}
+
 export default function MessagesTab() {
   const { currentUser } = useAuth();
-  const { threads, messages, properties, sendMessage } = useStore();
+  const queryClient = useQueryClient();
   const [selectedThread, setSelectedThread] = useState<string | null>(null);
   const [newMessage, setNewMessage] = useState("");
+  const currentUsername = (currentUser as any)?.username;
 
-  const myThreads = threads
-    .filter((t) => t.participants.includes(currentUser?.id ?? ""))
-    .sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime());
+  const conversationsQuery = useQuery({
+    queryKey: ["dashboard", "messages", "conversations"],
+    queryFn: () => api.chat.conversations(),
+    enabled: !!currentUser,
+    staleTime: 30_000,
+  });
 
-  const currentThread = myThreads.find((t) => t.id === selectedThread) ?? myThreads[0];
-  const threadMessages = messages.filter((m) => m.threadId === (selectedThread ?? currentThread?.id));
+  const currentThreadId = selectedThread;
+  const messagesQuery = useQuery({
+    queryKey: ["dashboard", "messages", "conversation", currentThreadId],
+    queryFn: () => api.chat.conversation(Number(currentThreadId)),
+    enabled: !!currentUser && !!currentThreadId,
+    staleTime: 10_000,
+  });
 
-  const getOtherParticipant = (thread: typeof threads[0]) =>
-    thread.participants.find((p) => p !== currentUser?.id) ?? "";
-  const getParticipantName = (thread: typeof threads[0]) => {
+  const sendMutation = useMutation({
+    mutationFn: (payload: any) => api.chat.create(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["dashboard", "messages"] });
+      setNewMessage("");
+    },
+  });
+
+  const myThreads = useMemo(() => {
+    const apiThreads = unwrapList(conversationsQuery.data);
+    return apiThreads.sort((a: any, b: any) =>
+      new Date(b.lastMessageAt ?? b.last_message_at ?? 0).getTime() -
+      new Date(a.lastMessageAt ?? a.last_message_at ?? 0).getTime()
+    );
+  }, [conversationsQuery.data]);
+
+  const currentThread = myThreads.find((t: any) => String(t.id) === String(selectedThread)) ?? myThreads[0];
+  const threadMessages = useMemo(() => {
+    const apiMessages = unwrapList(messagesQuery.data);
+    return apiMessages;
+  }, [messagesQuery.data]);
+
+  useEffect(() => {
+    if (!selectedThread && myThreads[0]?.id) {
+      setSelectedThread(String(myThreads[0].id));
+    }
+  }, [myThreads, selectedThread]);
+
+  const getOtherParticipant = (thread: any) =>
+    thread.participants?.find((p: string) => p !== currentUsername && p !== currentUser?.id) ?? "";
+  const getParticipantName = (thread: any) => {
     const otherId = getOtherParticipant(thread);
-    return thread.participantNames?.[otherId] ?? otherId;
+    return thread.participantNames?.[otherId] ?? thread.other_name ?? thread.title ?? otherId;
   };
-  const getProperty = (id?: string) => properties.find((p) => p.id === id);
-
   const handleSend = () => {
     const threadId = selectedThread ?? currentThread?.id;
-    if (!newMessage.trim() || !threadId || !currentUser) return;
-    sendMessage(threadId, currentUser.id, newMessage.trim());
-    setNewMessage("");
+    const receiverId = currentThread?.receiverId ?? currentThread?.receiver_id;
+    if (!newMessage.trim() || !threadId || !currentUser || !receiverId) return;
+
+    sendMutation.mutate({
+      conversation_id: Number(threadId),
+      content: newMessage.trim(),
+      receiver: receiverId,
+    });
   };
+  const canSend = !!(currentThread?.receiverId ?? currentThread?.receiver_id);
 
   return (
     <div className="space-y-5">
@@ -48,19 +95,21 @@ export default function MessagesTab() {
         </div>
       ) : (
         <div className="bg-card border border-border rounded-xl overflow-hidden flex h-[500px]">
-          {/* Thread list */}
           <div className="w-64 border-r border-border flex flex-col shrink-0">
             <div className="px-4 py-3 border-b border-border">
               <p className="text-sm font-semibold text-foreground">Conversations</p>
             </div>
             <div className="flex-1 overflow-y-auto">
-              {myThreads.map((t) => {
-                const isActive = (selectedThread ?? currentThread?.id) === t.id;
-                const prop = getProperty(t.propertyId);
+              {myThreads.map((t: any) => {
+                const isActive = String((selectedThread ?? currentThread?.id) ?? "") === String(t.id);
+                const prop = t.property ?? t.bien ?? null;
                 return (
-                  <button key={t.id} type="button"
+                  <button
+                    key={t.id}
+                    type="button"
                     className={`w-full flex items-start gap-3 px-4 py-3 text-left hover:bg-muted/40 transition-colors border-b border-border/50 ${isActive ? "bg-primary/5" : ""}`}
-                    onClick={() => setSelectedThread(t.id)}>
+                    onClick={() => setSelectedThread(String(t.id))}
+                  >
                     <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
                       <User className="w-4 h-4 text-primary" />
                     </div>
@@ -69,7 +118,7 @@ export default function MessagesTab() {
                         {getParticipantName(t)}
                       </p>
                       {prop && <p className="text-xs text-muted-foreground truncate">{prop.titre}</p>}
-                      {t.lastMessage && <p className="text-xs text-muted-foreground truncate mt-0.5">{t.lastMessage}</p>}
+                      {(t.lastMessage ?? t.last_message) && <p className="text-xs text-muted-foreground truncate mt-0.5">{t.lastMessage ?? t.last_message}</p>}
                     </div>
                   </button>
                 );
@@ -77,7 +126,6 @@ export default function MessagesTab() {
             </div>
           </div>
 
-          {/* Chat */}
           {currentThread ? (
             <div className="flex-1 flex flex-col min-w-0">
               <div className="px-5 py-3 border-b border-border flex items-center gap-3 bg-muted/20">
@@ -86,20 +134,20 @@ export default function MessagesTab() {
                 </div>
                 <div>
                   <p className="text-sm font-semibold text-foreground">{getParticipantName(currentThread)}</p>
-                  {currentThread.propertyId && (
-                    <p className="text-xs text-muted-foreground">{getProperty(currentThread.propertyId)?.titre}</p>
+                  {(currentThread.property || currentThread.bien) && (
+                    <p className="text-xs text-muted-foreground">{(currentThread.property ?? currentThread.bien)?.titre}</p>
                   )}
                 </div>
               </div>
               <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
-                {threadMessages.map((msg) => {
-                  const isMe = msg.senderId === currentUser?.id;
+                {threadMessages.map((msg: any) => {
+                  const isMe = msg.senderId === currentUser?.id || msg.sender_id === currentUser?.id;
                   return (
                     <div key={msg.id} className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
                       <div className={`max-w-[75%] px-4 py-2.5 rounded-2xl text-sm ${isMe ? "bg-primary text-white rounded-br-sm" : "bg-muted text-foreground rounded-bl-sm"}`}>
-                        <p>{msg.content}</p>
+                        <p>{msg.content ?? msg.message}</p>
                         <p className={`text-xs mt-1 ${isMe ? "text-white/70" : "text-muted-foreground"}`}>
-                          {new Date(msg.timestamp).toLocaleTimeString("fr-CI", { hour: "2-digit", minute: "2-digit" })}
+                          {new Date(msg.timestamp ?? msg.created_at ?? Date.now()).toLocaleTimeString("fr-CI", { hour: "2-digit", minute: "2-digit" })}
                         </p>
                       </div>
                     </div>
@@ -107,14 +155,29 @@ export default function MessagesTab() {
                 })}
               </div>
               <div className="px-5 py-3 border-t border-border flex gap-3">
-                <Input value={newMessage} onChange={(e) => setNewMessage(e.target.value)}
-                  placeholder="Écrire un message..." className="flex-1"
-                  onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-                  data-testid="input-message" />
-                <Button className="bg-primary text-white px-4 gap-2 shrink-0" onClick={handleSend} data-testid="button-send-message">
+                <Input
+                  value={newMessage}
+                  onChange={(e) => setNewMessage(e.target.value)}
+                  placeholder="Écrire un message..."
+                  className="flex-1"
+                  disabled={!canSend}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSend();
+                    }
+                  }}
+                  data-testid="input-message"
+                />
+                <Button className="bg-primary text-white px-4 gap-2 shrink-0" onClick={handleSend} data-testid="button-send-message" disabled={!canSend}>
                   <Send className="w-4 h-4" />
                 </Button>
               </div>
+              {!canSend && (
+                <p className="px-5 pb-3 text-xs text-muted-foreground">
+                  L'envoi du message depend encore de l'identifiant du destinataire cote backend.
+                </p>
+              )}
             </div>
           ) : (
             <div className="flex-1 flex items-center justify-center">

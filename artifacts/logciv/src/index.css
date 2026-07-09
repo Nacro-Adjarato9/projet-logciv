@@ -92,7 +92,7 @@
   --sidebar: 222 47% 11%;
   --sidebar-foreground: 210 40% 95%;
   --sidebar-border: 222 40% 18%;
-  --sidebar-primary: 24 95% 53%;
+  --sidebar-primary: 22 82% 51%;
   --sidebar-primary-foreground: 0 0% 100%;
   --sidebar-accent: 222 40% 18%;
   --sidebar-accent-foreground: 210 40% 90%;
@@ -104,7 +104,7 @@
   --popover-border: 214 32% 88%;
 
   /* Primary: Ivoirian orange */
-  --primary: 24 95% 53%;
+  --primary: 22 82% 51%;
   --primary-foreground: 0 0% 100%;
 
   /* Secondary: light slate */
@@ -174,7 +174,7 @@
   --sidebar: 222 47% 6%;
   --sidebar-foreground: 210 40% 92%;
   --sidebar-border: 222 40% 14%;
-  --sidebar-primary: 24 95% 53%;
+  --sidebar-primary: 22 82% 51%;
   --sidebar-primary-foreground: 0 0% 100%;
   --sidebar-accent: 222 40% 14%;
   --sidebar-accent-foreground: 210 40% 85%;
@@ -184,7 +184,7 @@
   --popover-foreground: 210 40% 96%;
   --popover-border: 222 40% 20%;
 
-  --primary: 24 95% 53%;
+  --primary: 22 82% 51%;
   --primary-foreground: 0 0% 100%;
 
   --secondary: 222 40% 16%;
@@ -216,6 +216,10 @@
 }
 
 @layer base {
+  html {
+    font-size: 17px;
+  }
+
   * {
     @apply border-border;
   }

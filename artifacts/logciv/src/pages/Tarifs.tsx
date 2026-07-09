@@ -31,12 +31,15 @@ export default function Tarifs() {
       setShowConfirm(false);
       setSelectedPlan(null);
       // Redirect to dashboard
-      if (currentUser.role === "proprietaire") {
-        setLocation("/dashboard/proprietaire");
-      } else if (currentUser.role === "agent") {
+      const role = String(currentUser.role);
+      if (role === "agent") {
         setLocation("/dashboard/agent");
-      } else {
+      } else if (role === "agence") {
         setLocation("/dashboard/agence");
+      } else if (role === "locataire") {
+        setLocation("/dashboard/locataire");
+      } else {
+        setLocation("/dashboard/proprietaire");
       }
     }
   };
