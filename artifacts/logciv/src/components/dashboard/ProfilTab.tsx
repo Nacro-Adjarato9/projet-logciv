@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { User, Phone, Mail, MapPin, Building2, FileText, CheckCircle, Clock, XCircle, AlertCircle, Globe, Pencil, X } from "lucide-react";
+import { User, Phone, Mail, MapPin, Building2, FileText, CheckCircle, Clock, XCircle, AlertCircle, Globe, Pencil, X, ShieldCheck } from "lucide-react";
 
 const roleLabels: Record<string, string> = { proprietaire: "Propriétaire", agent: "Agent", agence: "Agence" };
 const roleColors: Record<string, string> = {
@@ -19,6 +19,15 @@ const verifConfig: Record<string, { label: string; cls: string; icon: typeof Che
   en_attente: { label: "Vérification en cours", cls: "bg-yellow-100 text-yellow-700 border-yellow-200", icon: Clock },
   non_verifie: { label: "Non vérifié", cls: "bg-gray-100 text-gray-600 border-gray-200", icon: AlertCircle },
   refuse: { label: "Vérification refusée", cls: "bg-red-100 text-red-700 border-red-200", icon: XCircle },
+};
+
+// Statut de la vérification d'identité automatique (Didit), distincte de la
+// vérification manuelle de documents ci-dessus (verifConfig).
+const kycConfig: Record<string, { label: string; cls: string; icon: typeof CheckCircle }> = {
+  approved: { label: "Identité vérifiée", cls: "bg-green-100 text-green-700 border-green-200", icon: CheckCircle },
+  pending: { label: "Vérification en cours", cls: "bg-yellow-100 text-yellow-700 border-yellow-200", icon: Clock },
+  not_started: { label: "Identité non vérifiée", cls: "bg-gray-100 text-gray-600 border-gray-200", icon: AlertCircle },
+  declined: { label: "Vérification refusée", cls: "bg-red-100 text-red-700 border-red-200", icon: XCircle },
 };
 
 interface EditFormData {
@@ -43,6 +52,28 @@ export default function ProfilTab() {
   });
 
   const user = profileQuery.data ?? currentUser;
+
+  const kycQuery = useQuery({
+    queryKey: ["dashboard", "kyc"],
+    queryFn: () => api.kyc.status(),
+    enabled: !!currentUser,
+    staleTime: 30_000,
+  });
+
+  const [kycError, setKycError] = useState("");
+
+  const startKycMutation = useMutation({
+    mutationFn: () => api.kyc.start(),
+    onSuccess: (data: any) => {
+      if (data?.verification_url) {
+        window.open(data.verification_url, "_blank", "noopener,noreferrer");
+      }
+      queryClient.invalidateQueries({ queryKey: ["dashboard", "kyc"] });
+    },
+    onError: (err: any) => {
+      setKycError(err?.data?.error || err?.message || "Impossible de démarrer la vérification.");
+    },
+  });
 
   const saveMutation = useMutation({
     mutationFn: async (data: EditFormData) => {
@@ -262,6 +293,54 @@ export default function ProfilTab() {
               </div>
             </div>
           )}
+
+          <div className="bg-card border border-border rounded-xl p-5">
+            <h3 className="font-semibold text-foreground mb-1 flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-primary" /> Vérification d'identité automatique
+            </h3>
+            <p className="text-xs text-muted-foreground mb-3">
+              Distincte de la vérification manuelle des documents ci-dessus : scannez votre pièce
+              d'identité (carte d'identité ou passeport) pour une vérification instantanée.
+            </p>
+
+            {kycQuery.isLoading ? (
+              <p className="text-sm text-muted-foreground">Chargement du statut...</p>
+            ) : (
+              (() => {
+                const kycStatus = kycQuery.data?.kyc_status ?? "not_started";
+                const cfg = kycConfig[kycStatus] ?? kycConfig.not_started;
+                const KycIcon = cfg.icon;
+                return (
+                  <div className="space-y-3">
+                    <span className={`inline-flex items-center gap-1.5 text-xs border rounded-full px-2.5 py-1 ${cfg.cls}`}>
+                      <KycIcon className="w-3.5 h-3.5" />{cfg.label}
+                    </span>
+
+                    {(kycStatus === "not_started" || kycStatus === "declined") && (
+                      <div>
+                        <Button
+                          className="bg-primary text-white"
+                          onClick={() => { setKycError(""); startKycMutation.mutate(); }}
+                          disabled={startKycMutation.isPending}
+                          data-testid="button-start-kyc"
+                        >
+                          {startKycMutation.isPending ? "Redirection..." : "Vérifier mon identité"}
+                        </Button>
+                      </div>
+                    )}
+
+                    {kycStatus === "pending" && (
+                      <p className="text-xs text-muted-foreground">
+                        Votre vérification est en cours de traitement, cela peut prendre quelques minutes.
+                      </p>
+                    )}
+
+                    {kycError && <p className="text-xs text-destructive">{kycError}</p>}
+                  </div>
+                );
+              })()
+            )}
+          </div>
         </>
       )}
     </div>

@@ -1165,6 +1165,19 @@ export const utilsAPI = {
   },
 };
 
+// -------------------------
+// Verification d'identite (KYC Didit)
+// -------------------------
+export const kycAPI = {
+  start() {
+    return apiRequest("/kyc/start/", { method: "POST" });
+  },
+
+  status() {
+    return apiRequest("/kyc/status/");
+  },
+};
+
 // Export global pratique
 export const api = {
   baseURL: API_BASE_URL,
@@ -1182,6 +1195,7 @@ export const api = {
   abonnements: abonnementsAPI,
   ia: iaAPI,
   utils: utilsAPI,
+  kyc: kycAPI,
   setTokens,
   clearTokens,
   getStoredTokens,
