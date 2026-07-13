@@ -8,6 +8,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { User, Phone, Mail, MapPin, Building2, FileText, CheckCircle, Clock, XCircle, AlertCircle, Globe, Pencil, X, ShieldCheck } from "lucide-react";
 
+// Desactive pour la soutenance : evite tout risque d'echec reseau en direct
+// (Didit necessite une vraie connexion a leurs serveurs). Remettre a true pour
+// reactiver la carte de verification automatique.
+const DIDIT_KYC_UI_ENABLED = false;
+
 const roleLabels: Record<string, string> = { proprietaire: "Propriétaire", agent: "Agent", agence: "Agence" };
 const roleColors: Record<string, string> = {
   proprietaire: "bg-primary/10 text-primary border-primary/20",
@@ -294,6 +299,7 @@ export default function ProfilTab() {
             </div>
           )}
 
+          {DIDIT_KYC_UI_ENABLED && (
           <div className="bg-card border border-border rounded-xl p-5">
             <h3 className="font-semibold text-foreground mb-1 flex items-center gap-2">
               <ShieldCheck className="w-4 h-4 text-primary" /> Vérification d'identité automatique
@@ -341,6 +347,7 @@ export default function ProfilTab() {
               })()
             )}
           </div>
+          )}
         </>
       )}
     </div>
