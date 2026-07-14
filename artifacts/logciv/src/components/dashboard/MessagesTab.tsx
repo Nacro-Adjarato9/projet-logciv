@@ -11,10 +11,14 @@ function unwrapList(data: any) {
   return data?.results ?? [];
 }
 
-export default function MessagesTab() {
+interface MessagesTabProps {
+  initialConversationId?: string;
+}
+
+export default function MessagesTab({ initialConversationId }: MessagesTabProps = {}) {
   const { currentUser } = useAuth();
   const queryClient = useQueryClient();
-  const [selectedThread, setSelectedThread] = useState<string | null>(null);
+  const [selectedThread, setSelectedThread] = useState<string | null>(initialConversationId ?? null);
   const [newMessage, setNewMessage] = useState("");
   const currentUsername = (currentUser as any)?.username;
 
@@ -28,7 +32,7 @@ export default function MessagesTab() {
   const currentThreadId = selectedThread;
   const messagesQuery = useQuery({
     queryKey: ["dashboard", "messages", "conversation", currentThreadId],
-    queryFn: () => api.chat.conversation(Number(currentThreadId)),
+    queryFn: () => api.chat.conversation(currentThreadId as string),
     enabled: !!currentUser && !!currentThreadId,
     staleTime: 10_000,
   });
@@ -61,6 +65,14 @@ export default function MessagesTab() {
     }
   }, [myThreads, selectedThread]);
 
+  // Depuis une notification "nouveau message", on force l'ouverture de la
+  // conversation visee meme si l'onglet Messages etait deja affiche.
+  useEffect(() => {
+    if (initialConversationId) {
+      setSelectedThread(initialConversationId);
+    }
+  }, [initialConversationId]);
+
   const getOtherParticipant = (thread: any) =>
     thread.participants?.find((p: string) => p !== currentUsername && p !== currentUser?.id) ?? "";
   const getParticipantName = (thread: any) => {
@@ -73,7 +85,7 @@ export default function MessagesTab() {
     if (!newMessage.trim() || !threadId || !currentUser || !receiverId) return;
 
     sendMutation.mutate({
-      conversation_id: Number(threadId),
+      conversation_id: String(threadId),
       content: newMessage.trim(),
       receiver: receiverId,
     });

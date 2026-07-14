@@ -35,7 +35,11 @@ function unwrapList(data: any) {
   return data?.results ?? [];
 }
 
-export default function ReservationsTab() {
+interface ReservationsTabProps {
+  highlightReservationId?: string | number;
+}
+
+export default function ReservationsTab({ highlightReservationId }: ReservationsTabProps = {}) {
   const { currentUser } = useAuth();
   const queryClient = useQueryClient();
 
@@ -99,8 +103,14 @@ export default function ReservationsTab() {
             const StatusIcon = cfg.icon;
             const isPending = r.status === "pending" || r.status === "en_attente";
 
+            const isHighlighted = highlightReservationId != null && String(highlightReservationId) === String(r.id);
+
             return (
-              <div key={r.id} className="bg-card border border-border rounded-xl p-4" data-testid={`reservation-${r.id}`}>
+              <div
+                key={r.id}
+                className={`bg-card border rounded-xl p-4 transition-colors ${isHighlighted ? "border-primary ring-2 ring-primary/30" : "border-border"}`}
+                data-testid={`reservation-${r.id}`}
+              >
                 <div className="flex items-start gap-4">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between flex-wrap gap-2">

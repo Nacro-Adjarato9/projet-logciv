@@ -309,7 +309,10 @@ export const useStore = create<AppState>()(
       },
 
       getUserSubscription: (userId) => {
-        const user = get().users.find((u) => u.id === userId);
+        const state = get();
+        const user =
+          state.users.find((u) => u.id === userId) ??
+          (state.currentUser?.id === userId ? state.currentUser : undefined);
         if (user?.subscription) {
           return user.subscription;
         }

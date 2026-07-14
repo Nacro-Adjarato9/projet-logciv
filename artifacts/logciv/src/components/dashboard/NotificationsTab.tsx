@@ -1,13 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/context/AuthContext";
 import { api } from "@/services/api";
-import { Bell, CalendarCheck, MessageSquare, Building2, Info, CheckCheck } from "lucide-react";
+import { Bell, CalendarCheck, MessageSquare, Building2, Info, CheckCheck, FileCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const typeConfig: Record<string, { icon: React.ElementType; color: string; bg: string }> = {
   reservation: { icon: CalendarCheck, color: "text-primary", bg: "bg-primary/10" },
   message: { icon: MessageSquare, color: "text-purple-600", bg: "bg-purple-100" },
   bien: { icon: Building2, color: "text-accent", bg: "bg-accent/10" },
+  document: { icon: FileCheck, color: "text-green-600", bg: "bg-green-100" },
   info: { icon: Info, color: "text-blue-600", bg: "bg-blue-100" },
 };
 
@@ -16,7 +17,11 @@ function unwrapList(data: any) {
   return data?.results ?? [];
 }
 
-export default function NotificationsTab() {
+interface NotificationsTabProps {
+  onNavigate?: (target: { tab: "messages" | "reservations"; conversationId?: string; reservationId?: string | number }) => void;
+}
+
+export default function NotificationsTab({ onNavigate }: NotificationsTabProps = {}) {
   const { currentUser } = useAuth();
   const queryClient = useQueryClient();
 
@@ -93,6 +98,11 @@ export default function NotificationsTab() {
                 onClick={() => {
                   if (!isRead) {
                     markReadMutation.mutate(n.id);
+                  }
+                  if (n.type === "message" && n.conversation_id) {
+                    onNavigate?.({ tab: "messages", conversationId: String(n.conversation_id) });
+                  } else if (n.type === "reservation" && n.reservation) {
+                    onNavigate?.({ tab: "reservations", reservationId: n.reservation });
                   }
                 }}
                 data-testid={`notif-${n.id}`}

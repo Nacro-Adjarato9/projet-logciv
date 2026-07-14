@@ -1,6 +1,4 @@
-import { useState } from "react";
 import { useLocation } from "wouter";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useAuth } from "@/context/AuthContext";
 import { useStore } from "@/lib/store";
 import PricingCard from "@/components/PricingCard";
@@ -13,35 +11,17 @@ import { Check, Zap, Users, Shield } from "lucide-react";
 export default function Tarifs() {
   const [, setLocation] = useLocation();
   const { currentUser } = useAuth();
-  const { upgradePlan, getUserSubscription } = useStore();
-  const [selectedPlan, setSelectedPlan] = useState<PlanType | null>(null);
-  const [showConfirm, setShowConfirm] = useState(false);
+  const { getUserSubscription } = useStore();
 
   const currentPlan = currentUser ? getUserSubscription(currentUser.id) : null;
 
   const handleSelectPlan = (planId: PlanType) => {
     if (planId === currentPlan?.planId) return;
-    setSelectedPlan(planId);
-    setShowConfirm(true);
-  };
-
-  const handleConfirmUpgrade = () => {
-    if (selectedPlan && currentUser) {
-      upgradePlan(currentUser.id, selectedPlan);
-      setShowConfirm(false);
-      setSelectedPlan(null);
-      // Redirect to dashboard
-      const role = String(currentUser.role);
-      if (role === "agent") {
-        setLocation("/dashboard/agent");
-      } else if (role === "agence") {
-        setLocation("/dashboard/agence");
-      } else if (role === "locataire") {
-        setLocation("/dashboard/locataire");
-      } else {
-        setLocation("/dashboard/proprietaire");
-      }
+    if (planId === "free" && currentUser) {
+      useStore.getState().upgradePlan(currentUser.id, "free");
+      return;
     }
+    setLocation(`/paiement?plan=${planId}`);
   };
 
   const plans = [PRICING_PLANS.free, PRICING_PLANS.basic, PRICING_PLANS.pro, PRICING_PLANS.agence];
@@ -168,30 +148,6 @@ export default function Tarifs() {
           </div>
         </div>
       </main>
-
-      {/* Confirmation Dialog */}
-      <AlertDialog open={showConfirm} onOpenChange={setShowConfirm}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Confirmer l'upgrade</AlertDialogTitle>
-            <AlertDialogDescription>
-              Voulez-vous vraiment passer au plan <strong>{selectedPlan ? PRICING_PLANS[selectedPlan].name : ""}</strong> ?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="my-4 text-sm text-gray-600">
-            <p className="mb-2">
-              <strong>Prix :</strong> {selectedPlan ? PRICING_PLANS[selectedPlan].price.toLocaleString("fr-CI") : ""} FCFA/mois
-            </p>
-            <p>Le paiement commencera immédiatement.</p>
-          </div>
-          <div className="flex gap-3 justify-end">
-            <AlertDialogCancel>Annuler</AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmUpgrade} className="bg-blue-600 hover:bg-blue-700">
-              Confirmer l'upgrade
-            </AlertDialogAction>
-          </div>
-        </AlertDialogContent>
-      </AlertDialog>
 
       <Footer />
     </div>

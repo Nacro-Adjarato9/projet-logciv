@@ -292,10 +292,14 @@ function normalizeConversation(data: any) {
 
   const lastMessage = normalizeMessage(data.last_message ?? data.lastMessage ?? {});
   const conversationId = data.conversation_id ?? data.id;
+  const receiverId = data.receiver_id ?? data.receiverId ?? null;
+  const receiverUsername = data.receiver_username ?? data.receiverUsername ?? null;
   return {
     ...data,
     id: conversationId,
     conversation_id: conversationId,
+    receiverId,
+    receiver_id: receiverId,
     lastMessage: lastMessage.content ?? lastMessage.texte ?? "",
     last_message: lastMessage,
     lastMessageAt: lastMessage.createdAt ?? lastMessage.created_at ?? null,
@@ -306,7 +310,7 @@ function normalizeConversation(data: any) {
       lastMessage.sender,
       lastMessage.receiver,
     ].filter(Boolean),
-    participantNames: data.participantNames ?? {},
+    participantNames: data.participantNames ?? (receiverUsername ? { [receiverUsername]: receiverUsername } : {}),
     property: data.property ?? data.bien ?? null,
     bien: data.bien ?? data.property ?? null,
   };
@@ -800,7 +804,7 @@ export const chatAPI = {
     );
   },
 
-  conversation(conversationId: number) {
+  conversation(conversationId: string | number) {
     return apiRequest(`/messages/conversation/${conversationId}/`).then((data) =>
       normalizeListResponse(data, normalizeMessage)
     );

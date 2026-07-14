@@ -13,6 +13,7 @@ import VerifyEmail from "@/pages/VerifyEmail";
 import ResetPassword from "@/pages/ResetPassword";
 import Dashboard from "@/pages/Dashboard";
 import Tarifs from "@/pages/Tarifs";
+import Paiement from "@/pages/Paiement";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
@@ -31,6 +32,7 @@ function Router() {
       <Route path="/" component={Home} />
       <Route path="/apropos" component={Apropos} />
       <Route path="/tarifs" component={Tarifs} />
+      <Route path="/paiement" component={Paiement} />
       <Route path="/inscription" component={Inscription} />
       <Route path="/connexion" component={Connexion} />
       <Route path="/verify-email" component={VerifyEmail} />

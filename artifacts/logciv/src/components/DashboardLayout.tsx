@@ -70,6 +70,19 @@ export default function DashboardLayout({ children, activeTab, onTabChange }: Da
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [, setLocation] = useLocation();
 
+  // Meme cle que ProfilTab (["dashboard","profile"]) : React Query partage le
+  // cache entre les deux, donc ce n'est pas une requete reseau supplementaire
+  // une fois que l'un des deux l'a chargee. Sans ca, le badge de statut restait
+  // fige sur la valeur au moment de la connexion (currentUser vient du store
+  // local, jamais rafraichi apres une verification de documents reussie).
+  const profileQuery = useQuery({
+    queryKey: ["dashboard", "profile"],
+    queryFn: () => api.users.me(),
+    enabled: !!currentUser,
+    staleTime: 60_000,
+    refetchInterval: 15_000,
+  });
+
   const notificationsQuery = useQuery({
     queryKey: ["notifications", currentUser?.id],
     queryFn: () => api.notifications.list(),
@@ -81,7 +94,8 @@ export default function DashboardLayout({ children, activeTab, onTabChange }: Da
     ? notificationsQuery.data
     : notificationsQuery.data?.results ?? [];
   const unreadNotifs = notificationItems.filter((n: any) => !n.read).length;
-  const verStatus = currentUser?.verificationStatus ?? "non_verifie";
+  const liveUser: any = profileQuery.data ?? currentUser;
+  const verStatus = liveUser?.verificationStatus ?? liveUser?.verification_status ?? "non_verifie";
 
   const handleLogout = () => { logout(); setLocation("/"); };
 
